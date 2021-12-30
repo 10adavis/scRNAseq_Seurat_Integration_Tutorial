@@ -1,0 +1,233 @@
+---
+title: "2.03_QC_Filter_Data"
+author: ""
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  rmarkdown::html_document:
+    toc: TRUE
+---
+
+
+
+
+## QC and selecting cells for further analysis
+
+Seurat allows you to easily explore QC metrics and filter cells based on any user-defined criteria. A few QC metrics commonly used by the community include
+
++ The number of unique genes detected in each cell.
+      + Low-quality cells or empty droplets will often have very few genes
+      + Cell doublets or multiplets may exhibit an aberrantly high gene count
++ Similarly, the total number of molecules detected within a cell (correlates strongly with unique genes)
+      + The percentage of reads that map to the mitochondrial genome
+      + Low-quality / dying cells often exhibit extensive mitochondrial contamination
+      + We calculate mitochondrial QC metrics with the PercentageFeatureSet() function, which calculates the percentage of counts originating from a set of features
+      + We use the set of all genes starting with MT- as a set of mitochondrial genes
+        
+### Install/Load dependencies
+```{r, echo=TRUE, message=FALSE, Loading_Dependencies_2}
+# Load dependencies:
+library(dplyr)
+```
+
+
+# Cell counts
+The cell counts are determined by the number of unique cellular barcodes detected. 
+
+In an ideal world, you would expect the number of unique cellular barcodes to correspond to the number of cells you loaded. However, this is not the case as capture rates of cells are only a proportion of what is loaded. For example, the inDrops cell capture efficiency is higher (70-80%) compared to 10X which can drop is between 50-60%.
+
+The cell numbers can also vary by protocol, producing cell numbers that are much higher than what we loaded. For example, during the inDrops protocol, the cellular barcodes are present in the hydrogels, which are encapsulated in the droplets with a single cell and lysis/reaction mixture. While each hydrogel should have a single cellular barcode associated with it, occasionally a hydrogel can have more than one cellular barcode. Similarly, with the 10X protocol there is a chance of obtaining only a barcoded bead in the emulsion droplet (GEM) and no actual cell. Both of these, in addition to the presence of dying cells can lead to a higher number of cellular barcodes than cells.
+
+We will create the metadata dataframe by extracting the meta.data slot from the Seurat object:
+
+### Add ages to metadata and export the seurat file:
+```{r add_age_groups_to_sbjects}
+# Create metadata dataframe
+metadata <- ifnb@meta.data
+```
+Next, we'll add a new column for cell identifiers. This information is currently located in the row names of our metadata dataframe. We will keep the rownames as is and duplicate it into a new column called cells:
+```{r}
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+```
+
+### Visualize the number of cell counts per sample
+```{r}
+metadata %>% 
+  	ggplot(aes(x=orig.ident, fill=orig.ident)) + 
+  	geom_bar() +
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells")
+```
+
+### Visualize the number of UMI counts (transcripts) per cell
+The UMI counts per cell should generally be above 500, that is the low end of what we expect. If UMI counts are between 500-1000 counts, it is usable but the cells probably should have been sequenced more deeply.
+```{r}
+# Visualize the number UMIs/transcripts per cell
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_log10() + 
+  	theme_classic() +
+  	ylab("Cell density") +
+  	geom_vline(xintercept = 500)
+```
+We can see that all of our cells in both samples have 500 UMIs or greater, which is great.
+
+### Genes detected per cell:
+We have similar expectations for gene detection as for UMI detection, although it may be a bit lower than UMIs. For high quality data, the proportional histogram should contain a single large peak that represents cells that were encapsulated. If we see a small shoulder to the right of the major peak (not present in our data), or a bimodal distribution of the cells, that can indicate a couple of things. It might be that there are a set of cells that failed for some reason. It could also be that there are biologically different types of cells (i.e. quiescent cell populations, less complex cells of interest), and/or one type is much smaller than the other (i.e. cells with high counts may be cells that are larger in size). Therefore, this threshold should be assessed with other metrics that we describe in this lesson.
+```{r}
+# Visualize the distribution of genes detected per cell via histogram
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	scale_x_log10() + 
+  	geom_vline(xintercept = 250)
+# Visualize the distribution of genes detected per cell via boxplot
+metadata %>% 
+  	ggplot(aes(x=orig.ident, y=log10(nFeature_RNA), fill=orig.ident)) + 
+  	geom_boxplot() + 
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells vs NGenes")
+```
+
+# UMIs vs. genes detected
+Two metrics that are often evaluated together are the number of UMIs and the number of genes detected per cell. Here, we have plotted the number of genes versus the numnber of UMIs coloured by the fraction of mitochondrial reads. Mitochondrial read fractions are only high (light blue color) in particularly low count cells with few detected genes. This could be indicative of damaged/dying cells whose cytoplasmic mRNA has leaked out through a broken membrane, and thus, only mRNA located in the mitochondria is still conserved. These cells are filtered out by our count and gene number thresholds. Jointly visualizing the count and gene thresholds shows the joint filtering effect.
+
+Cells that are poor quality are likely to have low genes and UMIs per cell, and correspond to the data points in the bottom left quadrant of the plot. Good cells will generally exhibit both higher number of genes per cell and higher numbers of UMIs.
+
+With this plot we also evaluate the slope of the line, and any scatter of data points in the bottom right hand quadrant of the plot. These cells have a high number of UMIs but only a few number of genes. These could be dying cells, but also could represent a population of a low complexity celltype (i.e red blood cells).
+
+```{r}
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata %>% 
+  	ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=mitoRatio)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~orig.ident)
+```
+
+# Mitochondrial counts ratio
+This metric can identify whether there is a large amount of mitochondrial contamination from dead or dying cells. We define poor quality samples for mitochondrial counts as cells which surpass the 0.2 mitochondrial ratio mark, unless of course you are expecting this in your sample.
+
+```{r}
+# Visualize the distribution of mitochondrial gene expression detected per cell
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=mitoRatio, fill=orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 0.05)
+metadata %>% 
+  	ggplot(aes(x=orig.ident, y=mitoRatio, fill=orig.ident)) + 
+  	geom_boxplot() + 
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells vs mitoRatio")
+```
+### Note that there are no mitochondrial reads in this dataset
+
+# Complexity
+We can see the samples where we sequenced each cell less have a higher overall complexity, that is because we have not started saturating the sequencing for any given gene for these samples. Outlier cells in these samples might be cells that have a less complex RNA species than other cells. Sometimes we can detect contamination with low complexity cell types like red blood cells via this metric. Generally, we expect the novelty score to be above 0.80.
+
+```{r}
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI
+metadata %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = orig.ident, fill=orig.ident)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.8)
+```
+
+# Filtering:
+
+In conclusion, considering any of these QC metrics in isolation can lead to misinterpretation of cellular signals. For example, cells with a comparatively high fraction of mitochondrial counts may be involved in respiratory processes and may be cells that you would like to keep. Likewise, other metrics can have other biological interpretations. Thus, always consider the joint effects of these metrics when setting thresholds and set them to be as permissive as possible to avoid filtering out viable cell populations unintentionally.
+
+## Cell-level filtering
+Now that we have visualized the various metrics, we can decide on the thresholds to apply which will result in the removal of low quality cells. Often the recommendations mentioned earlier are a rough guideline, and the specific experiment needs to inform the exact thresholds chosen. We will use the following thresholds:
+
+To remove possible cell doublets, we filtered out cells with more than 7500 expressed genes, and to remove potential apoptotic cells we discarded cells with more than 5% mitochondrial reads.
+
+nUMI > 500
+nGene > 250
+log10GenesPerUMI > 0.8
+mitoRatio < 0.05
+To filter, we wil go back to our Seurat object and use the subset() function:
+
+### Filter out low quality reads using selected thresholds - these will change with experiment
+```{r filter_seurat_object}
+ifnb_filt <- subset(ifnb, 
+                         subset= nCount_RNA >= 500 & 
+                           nFeature_RNA >= 250 & nFeature_RNA<= 7500 &
+                           log10GenesPerUMI > 0.80 & 
+                           mitoRatio < 0.05)
+```			                          
+
+# Gene-level filtering
+Within our data we will have many genes with zero counts. These genes can dramatically reduce the average expression for a cell and so we will remove them from our data. First we will remove genes that have zero expression in all cells. Additionally, we will perform some filtering by prevalence. If a gene is only expressed in a handful of cells, it is not particularly meaningful as it still brings down the averages for all other cells it is not expressed in. For our data we choose to keep only genes which are expressed in 10 or more cells.
+
+```{r filter_genes}
+# Output a logical vector for every gene on whether the more than zero counts per cell
+# Extract counts
+counts <- GetAssayData(object = ifnb_filt, slot = "counts")
+# Output a logical vector for every gene on whether the more than zero counts per cell
+nonzero <- counts > 0
+```
+
+Now, we will perform some filtering by prevalence. If a gene is only expressed in a handful of cells, it is not particularly meaningful as it still brings down the averages for all other cells it is not expressed in. For our data we choose to keep only genes which are expressed in 10 or more cells. By using this filter, genes which have zero counts in all cells will effectively be removed.
+```{r}
+# Sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts <- counts[keep_genes, ]
+# Reassign to filtered Seurat object
+ifnb_filt <- CreateSeuratObject(filtered_counts, meta.data = ifnb_filt@meta.data)
+```
+
+
+# Re-assess QC metrics
+After performing the filtering, it's recommended to look back over the metrics to make sure that your data matches your expectations and is good for downstream analysis.
+
+```{r reassess_QC_after_filtering}
+# Visualize the distribution of genes detected per cell via histogram
+ifnb_filt@meta.data %>% 
+  	ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	scale_x_log10() + 
+  	geom_vline(xintercept = 250)
+# Visualize the distribution of genes detected per cell via boxplot
+ifnb_filt@meta.data %>% 
+  	ggplot(aes(x=orig.ident, y=log10(nFeature_RNA), fill=orig.ident)) + 
+  	geom_boxplot() + 
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells vs NGenes")
+ifnb_filt@meta.data %>% 
+  	ggplot(aes(x=orig.ident, y=mitoRatio, fill=orig.ident)) + 
+  	geom_boxplot() + 
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells vs mitoRatio")
+```
+
+### Session information
+```{r session_info_203}
+sessionInfo()
+```
+
+
+This document was processed on: `r Sys.Date()`.

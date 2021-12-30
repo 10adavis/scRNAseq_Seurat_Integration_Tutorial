@@ -1,1 +1,0 @@
-This directory contains the associated metadata for this analysis.

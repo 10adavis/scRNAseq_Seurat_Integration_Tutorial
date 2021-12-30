@@ -17,7 +17,7 @@ library(rmarkdown)
 
 ```{r Run_all, include=FALSE}
 files_in_r_to_run <- 
-  c("1.03_Gather-and-Tidy-Data.Rmd","2.03_Downstream_Analysis.Rmd")
+  c("1.03_Gather-and-Tidy-Data.Rmd","2.03_QC_Filter_Data.Rmd","3.03_Normalize_Data.Rmd","4.04_Clustering_finding_Biomarkers.Rmd")
 
 for(i1 in 1:length(files_in_r_to_run)){
   

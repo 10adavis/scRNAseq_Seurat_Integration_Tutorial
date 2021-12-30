@@ -1,5 +1,5 @@
 ---
-title: "README: Title of repo version 0.0"
+title: "README: scRNAseq_Seurat_Integration_Tutorial v1.0"
 author: "Andrew Davis"
 date: "`r Sys.Date()`"
 output:
@@ -9,31 +9,32 @@ output:
 
 ## Overview
 
-This directory contains an analysis of....
+This directory contains a tutorial for Seurat's single cell RNA-seq analysis methods, including anchor-based integration. To illustrate these methods, this tutorial includes a comparative analysis of human immune cells (PBMC) in either a resting or interferon-stimulated state 
 
+The following tutorial is designed to give you an overview of the kinds of comparative analyses on complex cell types that are possible using the Seurat integration procedure. Here, we address a few key goals:
 
-The experiments were performed by ______ in the lab of ____.
+  + Create an ‘integrated’ data assay for downstream analysis
+  + Identify cell types that are present in both datasets
+  + Obtain cell type markers that are conserved in both control and stimulated cells
+  + Perform differential expression analysis on cell type clusters to find cell-type specific responses to stimulation
 
-The full analysis for this study can be found on_____
-
-This analysis was version controlled as a GitHub repository, and can be accessed at the following url [](). Updates to this analysis will be tracked at the this location. For access to this repository, please reach out to ______.
 
 ## Lead contact(s):
 
 * [Andrew J. Davis, PhD: 88adavis@gmail.com](mailto:88adavis@gmail.com)
-* ....
-
-
-## Metadata:
-
-Metadata associated with this analysis can be found in the [Metadata](Metadata) folder. Note that the contents of this folder will not be tracked by the remote repository by default (these files tend to be large to store on GitHub). To track the contents of this folder, one must remove the line "/Metadata/" from the [.gitignore](.gitignore) file.
-
 
 ## Input Data
 
 The input data was acquired from ______ on  0/0/0000. Note that the contents of this folder will not be tracked by the remote repository by default (these files tend to be large to store on GitHub). To track the contents of this folder, one must remove the line "/Input/" from the [.gitignore](.gitignore) file.
 
 ## Analysis pipeline:
+
+The following pipeline was adapted from the guided tutorials and vignettes listed below:
+
+  + https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
+  + https://github.com/hbctraining/scRNA-seq/tree/master/lessons
+
+Single-Cell RNA-seq Analysis workflow
 
 1. 
 2.
